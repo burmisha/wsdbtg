@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
-from bot.main import echo, help_command, start
+from bot.handlers import echo, help_command, start
 
 
 async def test_start_replies():
