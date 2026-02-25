@@ -11,7 +11,9 @@ logger = get_logger(__name__)
 
 
 async def post_init(application: Application) -> None:
-    application.bot_data.db = await create_pool(settings.database_url)
+    application.bot_data = BotContext(
+        db=await create_pool(settings.database_url),
+    )
 
 
 async def post_shutdown(application: Application) -> None:
@@ -20,10 +22,11 @@ async def post_shutdown(application: Application) -> None:
 
 def main() -> None:
     token = settings.telegram_bot_token.get_secret_value()
+    context_types = ContextTypes(bot_data=BotContext)
     app = (
         Application.builder()
         .token(token)
-        .context_types(ContextTypes(bot_data=BotContext))
+        .context_types(context_types)
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()
