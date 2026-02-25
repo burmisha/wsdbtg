@@ -88,6 +88,11 @@ Add these secrets to the repo (`Settings → Secrets and variables → Actions`)
 > **Note:** `.env` is not managed by CI. Deliver it to the droplet manually once
 > and update it when new variables are added.
 
+```bash
+scp -i ~/.ssh/gh_do_deploy .env deploy@<droplet-ip>:/home/deploy/.env
+ssh -i ~/.ssh/gh_do_deploy deploy@<droplet-ip> "chmod 600 /home/deploy/.env && ls -alh /home/deploy/.env"
+```
+
 ---
 
 ### Manual deploy
