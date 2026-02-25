@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Привет! Я эхо-бот.\nНапиши мне что-нибудь — я повторю.\n\n/help — список команд')
+    await update.message.reply_text('Привет! Я эхо.\nНапиши мне что-нибудь — я повторю.\n\n/help — список команд')
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

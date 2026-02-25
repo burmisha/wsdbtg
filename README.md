@@ -37,14 +37,21 @@ Get a bot token from [@BotFather](https://t.me/BotFather).
 
 ## Deploy to Digital Ocean via Docker
 
-### 1. Create a Droplet
+### One-time droplet setup
+
+Create a Droplet:
 
 - Ubuntu 24.04 LTS, Basic plan.
-- Add your SSH key during setup. `ssh-keygen -t ed25519 -C "deploy@digitalocean" -f ~/.ssh/digital_ocean`
-
-### 2. Install Docker on the Droplet
+- Add your SSH key during setup.
 
 ```bash
+ssh-keygen -t ed25519 -C "deploy@digitalocean" -f ~/.ssh/digital_ocean
+
+# put pub-key into /home/deploy/.ssh/authorized_keys for github
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/gh_do_deploy
+
+# Install Docker on the Droplet
+
 ssh -i ~/.ssh/digital_ocean root@<droplet-ip>
 
 curl --fail --silent --show-error --location https://get.docker.com | sh
@@ -52,29 +59,46 @@ curl --fail --silent --show-error --location https://get.docker.com | sh
 adduser deploy
 usermod -aG docker deploy
 su - deploy
+
+# Configure secrets
+
+cp .env.example ~/.env
+vim ~/.env
 ```
 
-### 3. Clone the repo
+---
+
+### Auto-deploy via GitHub Actions
+
+On every push to `main`, the workflow in `.github/workflows/deploy.yml`:
+1. Builds the Docker image and pushes it to GHCR (`ghcr.io/burmisha/wsdbtg:latest`)
+2. Copies `docker-compose.yml` to the droplet via SCP
+3. SSHes into the droplet and runs `docker compose pull && docker compose up --detach`
+
+`GITHUB_TOKEN` is used automatically to push to GHCR — no additional tokens needed.
+
+Add these secrets to the repo (`Settings → Secrets and variables → Actions`):
+
+| Secret | Value                                 |
+|---|---------------------------------------|
+| `DEPLOY_HOST` | Droplet IP address                    |
+| `DEPLOY_USER` | `deploy`                              |
+| `DEPLOY_SSH_KEY` | Contents of private key `~/.ssh/gh_do_deploy` |
+
+> **Note:** `.env` is not managed by CI. Deliver it to the droplet manually once
+> and update it when new variables are added.
+
+---
+
+### Manual deploy
 
 ```bash
-git clone https://github.com/burmisha/wsdbtg.git
-cd wsdbtg
+scp -i ~/.ssh/digital_ocean docker-compose.yml deploy@<droplet-ip>:~/
+ssh -i ~/.ssh/digital_ocean deploy@<droplet-ip> \
+  "docker compose --file ~/docker-compose.yml pull && docker compose --file ~/docker-compose.yml up --detach"
 ```
 
-### 4. Configure secrets
-
-```bash
-cp .env.example .env
-vim .env  
-```
-
-### 5. Start the bot
-
-```bash
-docker compose up --detach --build
-```
-
-### 6. Useful commands
+### Useful commands
 
 ```bash
 # View logs
@@ -82,7 +106,4 @@ docker compose logs --follow
 
 # Stop
 docker compose down
-
-# Restart after code update
-git pull && docker compose up --detach --build
 ```
