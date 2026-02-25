@@ -14,11 +14,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(update.message.text)
-    await save_message(context.bot_data['db'], update.effective_user.id, update.message.text)
+    await save_message(context.bot_data.db, update.effective_user.id, update.message.text)
 
 
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    prefixes = await get_history(context.bot_data['db'], update.effective_user.id)
+    prefixes = await get_history(context.bot_data.db, update.effective_user.id)
     if prefixes:
         await update.message.reply_text('\n'.join(prefixes))
     else:
