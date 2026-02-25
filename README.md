@@ -40,14 +40,18 @@ Get a bot token from [@BotFather](https://t.me/BotFather).
 ### 1. Create a Droplet
 
 - Ubuntu 24.04 LTS, Basic plan.
-- Add your SSH key during setup.
+- Add your SSH key during setup. `ssh-keygen -t ed25519 -C "deploy@digitalocean" -f ~/.ssh/digital_ocean`
 
 ### 2. Install Docker on the Droplet
 
 ```bash
-ssh root@<droplet-ip>
+ssh -i ~/.ssh/digital_ocean root@<droplet-ip>
 
 curl --fail --silent --show-error --location https://get.docker.com | sh
+
+adduser deploy
+usermod -aG docker deploy
+su - deploy
 ```
 
 ### 3. Clone the repo

@@ -20,6 +20,9 @@ dev = [
 asyncio_mode = "auto"
 pythonpath = ["."]
 
+[tool.ruff]
+line-length = 120
+
 [tool.ruff.format]
 quote-style = "single"
 

@@ -1,34 +1,12 @@
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
+from bot.handlers import echo, help_command, start
 from bot.logging import get_logger, setup_logging
 from bot.settings import Settings
 
 settings = Settings()
 setup_logging(settings.logging_level)
 logger = get_logger(__name__)
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        'Привет! Я эхо-бот.\n'
-        'Напиши мне что-нибудь — я повторю.\n\n'
-        '/help — список команд'
-    )
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('/start — приветствие\n/help — эта справка')
-
-
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(update.message.text)
 
 
 def main() -> None:
