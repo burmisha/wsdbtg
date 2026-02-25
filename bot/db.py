@@ -1,4 +1,12 @@
+from dataclasses import dataclass
+
 import asyncpg
+
+
+@dataclass
+class BotContext:
+    db: asyncpg.Pool | None = None
+
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS messages (

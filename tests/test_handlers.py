@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
+from bot.db import BotContext
 from bot.handlers import echo, help_command, history, start
 
 
@@ -28,7 +29,7 @@ async def test_echo_replies_with_same_text():
 
     db_mock = AsyncMock()
     context = MagicMock()
-    context.bot_data = {'db': db_mock}
+    context.bot_data = BotContext(db=db_mock)
 
     await echo(update, context)
 
@@ -44,7 +45,7 @@ async def test_history_shows_prefixes():
     db_mock = AsyncMock()
     db_mock.fetch.return_value = [{'prefix': 'hello'}, {'prefix': 'world'}]
     context = MagicMock()
-    context.bot_data = {'db': db_mock}
+    context.bot_data = BotContext(db=db_mock)
 
     await history(update, context)
 
@@ -59,7 +60,7 @@ async def test_history_empty():
     db_mock = AsyncMock()
     db_mock.fetch.return_value = []
     context = MagicMock()
-    context.bot_data = {'db': db_mock}
+    context.bot_data = BotContext(db=db_mock)
 
     await history(update, context)
 

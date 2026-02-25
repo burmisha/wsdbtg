@@ -1,6 +1,6 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-from bot.db import create_pool
+from bot.db import BotContext, create_pool
 from bot.handlers import echo, help_command, history, start
 from bot.logging import get_logger, setup_logging
 from bot.settings import Settings
@@ -11,16 +11,26 @@ logger = get_logger(__name__)
 
 
 async def post_init(application: Application) -> None:
-    application.bot_data['db'] = await create_pool(settings.database_url)
+    application.bot_data = BotContext(
+        db=await create_pool(settings.database_url),
+    )
 
 
 async def post_shutdown(application: Application) -> None:
-    await application.bot_data['db'].close()
+    await application.bot_data.db.close()
 
 
 def main() -> None:
     token = settings.telegram_bot_token.get_secret_value()
-    app = Application.builder().token(token).post_init(post_init).post_shutdown(post_shutdown).build()
+    context_types = ContextTypes(bot_data=BotContext)
+    app = (
+        Application.builder()
+        .token(token)
+        .context_types(context_types)
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
+        .build()
+    )
 
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_command))
