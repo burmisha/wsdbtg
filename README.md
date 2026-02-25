@@ -37,12 +37,14 @@ Get a bot token from [@BotFather](https://t.me/BotFather).
 
 ## Deploy to Digital Ocean via Docker
 
-### 1. Create a Droplet
+### One-time droplet setup
+
+#### 1. Create a Droplet
 
 - Ubuntu 24.04 LTS, Basic plan.
 - Add your SSH key during setup. `ssh-keygen -t ed25519 -C "deploy@digitalocean" -f ~/.ssh/digital_ocean`
 
-### 2. Install Docker on the Droplet
+#### 2. Install Docker on the Droplet
 
 ```bash
 ssh -i ~/.ssh/digital_ocean root@<droplet-ip>
@@ -54,27 +56,46 @@ usermod -aG docker deploy
 su - deploy
 ```
 
-### 3. Clone the repo
+#### 3. Configure secrets
 
 ```bash
-git clone https://github.com/burmisha/wsdbtg.git
-cd wsdbtg
+cp .env.example ~/.env
+vim ~/.env
 ```
 
-### 4. Configure secrets
+---
+
+### Auto-deploy via GitHub Actions
+
+On every push to `main`, the workflow in `.github/workflows/deploy.yml`:
+1. Builds the Docker image and pushes it to GHCR (`ghcr.io/burmisha/wsdbtg:latest`)
+2. Copies `docker-compose.yml` to the droplet via SCP
+3. SSHes into the droplet and runs `docker compose pull && docker compose up --detach`
+
+`GITHUB_TOKEN` is used automatically to push to GHCR — no additional tokens needed.
+
+Add these secrets to the repo (`Settings → Secrets and variables → Actions`):
+
+| Secret | Value |
+|---|---|
+| `DEPLOY_HOST` | Droplet IP address |
+| `DEPLOY_USER` | `deploy` |
+| `DEPLOY_SSH_KEY` | Contents of `~/.ssh/digital_ocean` (private key) |
+
+> **Note:** `.env` is not managed by CI. Deliver it to the droplet manually once
+> and update it when new variables are added.
+
+---
+
+### Manual deploy
 
 ```bash
-cp .env.example .env
-vim .env  
+scp -i ~/.ssh/digital_ocean docker-compose.yml deploy@<droplet-ip>:~/
+ssh -i ~/.ssh/digital_ocean deploy@<droplet-ip> \
+  "docker compose --file ~/docker-compose.yml pull && docker compose --file ~/docker-compose.yml up --detach"
 ```
 
-### 5. Start the bot
-
-```bash
-docker compose up --detach --build
-```
-
-### 6. Useful commands
+### Useful commands
 
 ```bash
 # View logs
@@ -82,7 +103,4 @@ docker compose logs --follow
 
 # Stop
 docker compose down
-
-# Restart after code update
-git pull && docker compose up --detach --build
 ```
