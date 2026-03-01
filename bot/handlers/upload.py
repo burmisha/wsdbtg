@@ -2,16 +2,14 @@ from telegram import Update
 
 from bot.db import save_activity
 from bot.handlers.context import BotCallbackContext
-from bot.parsers import parse
-
-_ALLOWED_EXTENSIONS = {'.fit', '.gpx', '.tcx'}
+from bot.parsers import SUPPORTED_EXTENSIONS, parse
 
 
 async def upload(update: Update, context: BotCallbackContext) -> None:
     file_name = update.message.document.file_name
     ext = '.' + file_name.rsplit('.', 1)[-1].lower() if '.' in file_name else ''
-    if ext not in _ALLOWED_EXTENSIONS:
-        allowed = ', '.join(sorted(_ALLOWED_EXTENSIONS))
+    if ext not in SUPPORTED_EXTENSIONS:
+        allowed = ', '.join(sorted(SUPPORTED_EXTENSIONS))
         await update.message.reply_text(f'Неподдерживаемый формат. Ожидается: {allowed}')
         return
 

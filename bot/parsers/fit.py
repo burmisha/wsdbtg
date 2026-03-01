@@ -2,13 +2,12 @@ from io import BytesIO
 
 from fitparse import FitFile
 
-from bot.models import Activity, TrackPoint
-from bot.parsers import _build_activity
+from bot.models import TrackPoint
 
 _SEMICIRCLE_TO_DEGREES = 180 / 2**31
 
 
-def parse_fit(filename: str, data: bytes) -> Activity:
+def parse_fit(data: bytes) -> tuple[list[TrackPoint], float | None]:
     fitfile = FitFile(BytesIO(data))
 
     points = []
@@ -33,4 +32,4 @@ def parse_fit(filename: str, data: bytes) -> Activity:
         source_distance_m = session.get_value('total_distance')
         break
 
-    return _build_activity(filename, points, source_distance_m)
+    return points, source_distance_m
