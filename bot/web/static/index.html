@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Track Explorer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+
+    #toolbar {
+      display: flex; align-items: center; gap: 16px;
+      padding: 8px 14px; background: #1e1e2e; color: #cdd6f4;
+      font-size: 13px; flex-shrink: 0; flex-wrap: wrap;
+    }
+    #toolbar strong { font-size: 14px; color: #cba6f7; }
+    #toolbar .stat { color: #a6adc8; }
+    #toolbar .stat span { color: #cdd6f4; }
+
+    #controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    #controls label { color: #a6adc8; }
+    #color-mode {
+      background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+      border-radius: 4px; padding: 3px 8px; font-size: 13px; cursor: pointer;
+    }
+
+    #legend {
+      display: flex; align-items: center; gap: 6px; font-size: 12px; color: #a6adc8;
+    }
+    #legend-bar {
+      width: 80px; height: 12px; border-radius: 3px;
+      background: linear-gradient(to right, hsl(240,80%,55%), hsl(0,80%,55%));
+    }
+    #legend.hidden { visibility: hidden; }
+
+    #map { flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <strong id="title">…</strong>
+    <span class="stat">Дистанция: <span id="stat-dist">—</span></span>
+    <span class="stat">Время: <span id="stat-dur">—</span></span>
+    <span class="stat">Точек: <span id="stat-pts">—</span></span>
+    <div id="controls">
+      <label for="color-mode">Цвет:</label>
+      <select id="color-mode">
+        <option value="none">—</option>
+        <option value="hr">HR</option>
+        <option value="elevation">Высота</option>
+        <option value="speed">Скорость</option>
+      </select>
+      <div id="legend" class="hidden">
+        <span id="legend-min">0</span>
+        <div id="legend-bar"></div>
+        <span id="legend-max">0</span>
+      </div>
+    </div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    let allPoints = [];
+    let markers = [];
+    let polylines = [];
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    function formatDuration(s) {
+      if (s == null) return '—';
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+      return h ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+               : `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+
+    function formatElapsed(s) {
+      return '+' + formatDuration(s);
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function valueToColor(v, min, max) {
+      if (v == null || min == null || max == null || min === max) return '#6c757d';
+      const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
+      // HSL: 240° (blue) → 0° (red)
+      const hue = lerp(240, 0, t);
+      return `hsl(${hue},80%,50%)`;
+    }
+
+    function getFieldValue(pt, mode) {
+      if (mode === 'hr') return pt.hr;
+      if (mode === 'elevation') return pt.elevation_m;
+      if (mode === 'speed') return pt.speed_ms != null ? pt.speed_ms * 3.6 : null; // km/h
+      return null;
+    }
+
+    function fieldRange(points, mode) {
+      const vals = points.map(p => getFieldValue(p, mode)).filter(v => v != null);
+      if (!vals.length) return [null, null];
+      return [Math.min(...vals), Math.max(...vals)];
+    }
+
+    function formatFieldValue(pt, mode) {
+      if (mode === 'hr') return pt.hr != null ? `${pt.hr} уд/мин` : '—';
+      if (mode === 'elevation') return pt.elevation_m != null ? `${pt.elevation_m.toFixed(1)} м` : '—';
+      if (mode === 'speed') return pt.speed_ms != null ? `${(pt.speed_ms * 3.6).toFixed(1)} км/ч` : '—';
+      return null;
+    }
+
+    // ── rendering ────────────────────────────────────────────────────────────
+
+    function clearMap() {
+      markers.forEach(m => map.removeLayer(m));
+      polylines.forEach(l => map.removeLayer(l));
+      markers = [];
+      polylines = [];
+    }
+
+    function buildPolylines(points) {
+      const segments = {};
+      points.forEach(pt => {
+        if (!segments[pt.segment_id]) segments[pt.segment_id] = [];
+        segments[pt.segment_id].push([pt.lat, pt.lon]);
+      });
+      Object.values(segments).forEach(coords => {
+        const pl = L.polyline(coords, { color: '#6c757d', weight: 2, opacity: 0.5 });
+        pl.addTo(map);
+        polylines.push(pl);
+      });
+    }
+
+    function buildMarkers(points, mode) {
+      const [minVal, maxVal] = mode !== 'none' ? fieldRange(points, mode) : [null, null];
+
+      // update legend
+      const legend = document.getElementById('legend');
+      if (mode !== 'none' && minVal != null) {
+        document.getElementById('legend-min').textContent = minVal.toFixed(1);
+        document.getElementById('legend-max').textContent = maxVal.toFixed(1);
+        legend.classList.remove('hidden');
+      } else {
+        legend.classList.add('hidden');
+      }
+
+      points.forEach(pt => {
+        const val = getFieldValue(pt, mode);
+        const color = mode !== 'none' ? valueToColor(val, minVal, maxVal) : '#4a9eff';
+
+        const tooltipLines = [
+          `<b>${pt.timestamp.slice(11,19)}</b> (${formatElapsed(pt.elapsed_s)})`,
+        ];
+        if (pt.elevation_m != null) tooltipLines.push(`Высота: ${pt.elevation_m.toFixed(1)} м`);
+        if (pt.hr != null) tooltipLines.push(`HR: ${pt.hr} уд/мин`);
+        if (pt.speed_ms != null) tooltipLines.push(`Скорость: ${(pt.speed_ms * 3.6).toFixed(1)} км/ч`);
+
+        const m = L.circleMarker([pt.lat, pt.lon], {
+          radius: 4,
+          color,
+          fillColor: color,
+          fillOpacity: 0.85,
+          weight: 1,
+        }).bindTooltip(tooltipLines.join('<br>'), { sticky: true });
+        m.addTo(map);
+        markers.push(m);
+      });
+    }
+
+    function render(points, mode) {
+      clearMap();
+      buildPolylines(points);
+      buildMarkers(points, mode);
+    }
+
+    // ── load data ─────────────────────────────────────────────────────────────
+
+    fetch('/api/activity')
+      .then(r => r.json())
+      .then(data => {
+        allPoints = data.points;
+
+        document.getElementById('title').textContent = data.filename;
+        document.getElementById('stat-pts').textContent = allPoints.length;
+        if (data.distance_m) {
+          document.getElementById('stat-dist').textContent = (data.distance_m / 1000).toFixed(2) + ' км';
+        }
+        document.getElementById('stat-dur').textContent = formatDuration(data.duration_s);
+
+        // hide color options that have no data
+        const hasHr = allPoints.some(p => p.hr != null);
+        const hasEle = allPoints.some(p => p.elevation_m != null);
+        const hasSpeed = allPoints.some(p => p.speed_ms != null);
+        if (!hasHr) document.querySelector('option[value="hr"]').remove();
+        if (!hasEle) document.querySelector('option[value="elevation"]').remove();
+        if (!hasSpeed) document.querySelector('option[value="speed"]').remove();
+
+        const mode = document.getElementById('color-mode').value;
+        render(allPoints, mode);
+
+        if (allPoints.length) {
+          const lats = allPoints.map(p => p.lat), lons = allPoints.map(p => p.lon);
+          map.fitBounds([
+            [Math.min(...lats), Math.min(...lons)],
+            [Math.max(...lats), Math.max(...lons)],
+          ], { padding: [20, 20] });
+        }
+      })
+      .catch(err => console.error('Failed to load activity:', err));
+
+    document.getElementById('color-mode').addEventListener('change', e => {
+      render(allPoints, e.target.value);
+    });
+  </script>
+</body>
+</html>
