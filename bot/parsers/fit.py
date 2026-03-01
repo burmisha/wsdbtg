@@ -1,15 +1,16 @@
 from io import BytesIO
 
-from fitparse import FitFile
+from fitparse import FitFile, FitParseError
 
+from bot.logging import get_logger
 from bot.models import TrackPoint
+
+logger = get_logger(__name__)
 
 _SEMICIRCLE_TO_DEGREES = 180 / 2**31
 
 
-def parse_fit(data: bytes) -> tuple[list[TrackPoint], float | None]:
-    fitfile = FitFile(BytesIO(data))
-
+def _extract(fitfile: FitFile) -> tuple[list[TrackPoint], float | None]:
     points = []
     for record in fitfile.get_messages('record'):
         lat = record.get_value('position_lat')
@@ -33,3 +34,13 @@ def parse_fit(data: bytes) -> tuple[list[TrackPoint], float | None]:
         break
 
     return points, source_distance_m
+
+
+def parse_fit(data: bytes) -> tuple[list[TrackPoint], float | None]:
+    try:
+        return _extract(FitFile(BytesIO(data)))
+    except FitParseError as e:
+        if 'CRC' not in str(e):
+            raise
+        logger.warning('FIT CRC mismatch (%s), parsing without CRC check', e)
+        return _extract(FitFile(BytesIO(data), check_crc=False))
