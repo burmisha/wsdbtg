@@ -8,7 +8,7 @@ from rich.table import Table
 from bot.cli import colors
 from bot.logging import get_logger
 from bot.models import Activity, TrackPoint
-from bot.parsers import parse
+from bot.parsers import SUPPORTED_EXTENSIONS, parse
 
 logger = get_logger(__name__)
 
@@ -113,7 +113,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
         required=True,
         metavar='FILE',
         dest='tracks',
-        help='Путь к файлу (.fit, .gpx, .tcx), можно указать несколько раз',
+        help=f'Путь к файлу ({", ".join(sorted(SUPPORTED_EXTENSIONS))}), можно указать несколько раз',
     )
     p.add_argument('--points', action='store_true', help='Вывести все точки трека')
     p.set_defaults(func=run)

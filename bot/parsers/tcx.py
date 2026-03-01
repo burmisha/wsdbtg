@@ -2,13 +2,12 @@ from datetime import datetime
 
 from lxml import etree
 
-from bot.models import Activity, TrackPoint
-from bot.parsers import _build_activity
+from bot.models import TrackPoint
 
 _NS = {'tcx': 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2'}
 
 
-def parse_tcx(filename: str, data: bytes) -> Activity:
+def parse_tcx(data: bytes) -> tuple[list[TrackPoint], float | None]:
     root = etree.fromstring(data)
 
     points = []
@@ -42,4 +41,4 @@ def parse_tcx(filename: str, data: bytes) -> Activity:
         except (ValueError, TypeError):
             pass
 
-    return _build_activity(filename, points, source_distance_m)
+    return points, source_distance_m

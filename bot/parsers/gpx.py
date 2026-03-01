@@ -1,7 +1,6 @@
 import gpxpy
 
-from bot.models import Activity, TrackPoint
-from bot.parsers import _build_activity
+from bot.models import TrackPoint
 
 
 def _extract_hr(point: gpxpy.gpx.GPXTrackPoint) -> int | None:
@@ -15,7 +14,7 @@ def _extract_hr(point: gpxpy.gpx.GPXTrackPoint) -> int | None:
     return None
 
 
-def parse_gpx(filename: str, data: bytes) -> Activity:
+def parse_gpx(data: bytes) -> tuple[list[TrackPoint], float | None]:
     gpx = gpxpy.parse(data.decode('utf-8'))
 
     points = []
@@ -37,4 +36,4 @@ def parse_gpx(filename: str, data: bytes) -> Activity:
                 )
             segment_id += 1
 
-    return _build_activity(filename, points, gpx.length_2d() or None)
+    return points, gpx.length_2d() or None
