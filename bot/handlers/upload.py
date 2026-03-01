@@ -1,5 +1,6 @@
-from telegram import Update
+from telegram import InputMediaPhoto, Update
 
+from bot.charts import elevation_chart, pace_hr_chart
 from bot.db import save_activity
 from bot.handlers.context import BotCallbackContext
 from bot.parsers import SUPPORTED_EXTENSIONS, parse
@@ -35,4 +36,14 @@ async def upload(update: Update, context: BotCallbackContext) -> None:
     if activity.avg_hr:
         parts.append(f'Пульс: {activity.avg_hr:.0f} уд/мин (макс {activity.max_hr})')
     parts.append(f'Точек: {len(activity.points)}')
-    await update.message.reply_text('\n'.join(parts))
+    caption = '\n'.join(parts)
+
+    charts = [c for c in (elevation_chart(activity), pace_hr_chart(activity)) if c is not None]
+
+    if len(charts) >= 2:
+        media = [InputMediaPhoto(media=charts[0], caption=caption), InputMediaPhoto(media=charts[1])]
+        await update.message.reply_media_group(media)
+    elif len(charts) == 1:
+        await update.message.reply_photo(photo=charts[0], caption=caption)
+    else:
+        await update.message.reply_text(caption)
