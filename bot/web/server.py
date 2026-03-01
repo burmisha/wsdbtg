@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from bot.models import Activity
+from bot.parsers import parse
 from bot.parsers.common import _haversine
 
 app = FastAPI()
@@ -69,3 +70,16 @@ def get_activity() -> JSONResponse:
     if _activity is None:
         return JSONResponse({'error': 'no activity loaded'}, status_code=503)
     return JSONResponse(_activity_to_dict(_activity))
+
+
+@app.post('/api/upload')
+async def upload_activity(file: UploadFile) -> JSONResponse:
+    # Parse an uploaded track file and make it available for rendering.
+    # Accepts .fit / .gpx / .tcx; returns the full activity JSON on success.
+    data = await file.read()
+    try:
+        activity = parse(file.filename or 'unknown', data)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=400)
+    set_activity(activity)
+    return JSONResponse(_activity_to_dict(activity))

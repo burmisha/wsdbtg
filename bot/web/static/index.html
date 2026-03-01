@@ -34,7 +34,42 @@
     }
     #legend.hidden { visibility: hidden; }
 
+    #load-btn {
+      cursor: pointer; padding: 3px 10px; margin-left: 8px;
+      background: #313244; color: #cdd6f4; border: 1px solid #45475a;
+      border-radius: 4px; font-size: 13px; user-select: none;
+      transition: border-color 0.15s;
+    }
+    #load-btn:hover, #load-btn.drag-over { border-color: #cba6f7; }
+
     #map { flex: 1; }
+
+    /* ── drag-and-drop overlay ── */
+    #dropzone {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      background: #1e1e2e;
+    }
+    #dropzone.hidden { display: none; }
+
+    .drop-card {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      padding: 48px 64px;
+      border: 2px dashed #45475a; border-radius: 12px;
+      color: #cdd6f4; text-align: center;
+      transition: border-color 0.15s, background 0.15s;
+      pointer-events: none; /* let events pass through to #dropzone */
+    }
+    #dropzone.drag-over .drop-card {
+      border-color: #cba6f7;
+      background: #2a2a3e;
+    }
+
+    .drop-icon { font-size: 48px; line-height: 1; }
+    .drop-title { font-size: 18px; font-weight: 600; color: #cba6f7; }
+    .drop-formats { font-size: 13px; color: #6c7086; letter-spacing: 0.05em; }
+    #drop-status { font-size: 13px; color: #a6adc8; min-height: 1em; }
+    #drop-error { font-size: 13px; color: #f38ba8; min-height: 1em; }
   </style>
 </head>
 <body>
@@ -57,8 +92,22 @@
         <span id="legend-max">0</span>
       </div>
     </div>
+    <label id="load-btn" title="Загрузить другой трек">
+      ⬆ Другой трек
+      <input type="file" id="file-input" accept=".fit,.gpx,.tcx" style="display:none">
+    </label>
   </div>
   <div id="map"></div>
+
+  <div id="dropzone">
+    <div class="drop-card">
+      <div class="drop-icon">⬆</div>
+      <div class="drop-title">Drop a track file here</div>
+      <div class="drop-formats">.fit · .gpx · .tcx</div>
+      <div id="drop-status"></div>
+      <div id="drop-error"></div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -106,13 +155,6 @@
       const vals = points.map(p => getFieldValue(p, mode)).filter(v => v != null);
       if (!vals.length) return [null, null];
       return [Math.min(...vals), Math.max(...vals)];
-    }
-
-    function formatFieldValue(pt, mode) {
-      if (mode === 'hr') return pt.hr != null ? `${pt.hr} уд/мин` : '—';
-      if (mode === 'elevation') return pt.elevation_m != null ? `${pt.elevation_m.toFixed(1)} м` : '—';
-      if (mode === 'speed') return pt.speed_ms != null ? `${(pt.speed_ms * 3.6).toFixed(1)} км/ч` : '—';
-      return null;
     }
 
     // ── rendering ────────────────────────────────────────────────────────────
@@ -179,44 +221,154 @@
       buildMarkers(points, mode);
     }
 
-    // ── load data ─────────────────────────────────────────────────────────────
+    // ── activity loading ──────────────────────────────────────────────────────
 
-    fetch('/api/activity')
-      .then(r => r.json())
-      .then(data => {
-        allPoints = data.points;
+    function applyActivity(data) {
+      allPoints = data.points;
 
-        document.getElementById('title').textContent = data.filename;
-        document.getElementById('stat-pts').textContent = allPoints.length;
-        if (data.distance_m) {
-          document.getElementById('stat-dist').textContent = (data.distance_m / 1000).toFixed(2) + ' км';
+      document.getElementById('title').textContent = data.filename;
+      document.getElementById('stat-pts').textContent = allPoints.length;
+      if (data.distance_m) {
+        document.getElementById('stat-dist').textContent = (data.distance_m / 1000).toFixed(2) + ' км';
+      }
+      document.getElementById('stat-dur').textContent = formatDuration(data.duration_s);
+
+      // show/hide color options depending on which fields are present in this track
+      const hasHr = allPoints.some(p => p.hr != null);
+      const hasEle = allPoints.some(p => p.elevation_m != null);
+      const hasSpeed = allPoints.some(p => p.speed_ms != null);
+      document.querySelector('option[value="hr"]').hidden = !hasHr;
+      document.querySelector('option[value="elevation"]').hidden = !hasEle;
+      document.querySelector('option[value="speed"]').hidden = !hasSpeed;
+      // reset to "none" if previously selected option is no longer available
+      const sel = document.getElementById('color-mode');
+      if (sel.selectedOptions[0]?.hidden) sel.value = 'none';
+
+      const mode = document.getElementById('color-mode').value;
+      render(allPoints, mode);
+
+      if (allPoints.length) {
+        const lats = allPoints.map(p => p.lat), lons = allPoints.map(p => p.lon);
+        map.fitBounds([
+          [Math.min(...lats), Math.min(...lons)],
+          [Math.max(...lats), Math.max(...lons)],
+        ], { padding: [20, 20] });
+      }
+
+      document.getElementById('dropzone').classList.add('hidden');
+    }
+
+    // ── init: load activity if already available ──────────────────────────────
+
+    async function init() {
+      const resp = await fetch('/api/activity');
+      if (resp.ok) {
+        applyActivity(await resp.json());
+      }
+      // if not ok: dropzone stays visible, waiting for drag-and-drop
+    }
+
+    // ── drag-and-drop handlers ────────────────────────────────────────────────
+
+    const dropzone = document.getElementById('dropzone');
+    const dropStatus = document.getElementById('drop-status');
+    const dropError = document.getElementById('drop-error');
+
+    // Highlight the drop zone while a file is dragged over it.
+    dropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+
+    // Remove highlight when the drag leaves the drop zone entirely.
+    dropzone.addEventListener('dragleave', e => {
+      if (!dropzone.contains(e.relatedTarget)) {
+        dropzone.classList.remove('drag-over');
+      }
+    });
+
+    // Upload the dropped file, parse it server-side, and render the result.
+    dropzone.addEventListener('drop', async e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      dropError.textContent = '';
+
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+
+      dropStatus.textContent = 'Processing…';
+
+      const form = new FormData();
+      form.append('file', file);
+
+      try {
+        const resp = await fetch('/api/upload', { method: 'POST', body: form });
+        const data = await resp.json();
+        if (resp.ok) {
+          applyActivity(data);
+        } else {
+          dropStatus.textContent = '';
+          dropError.textContent = data.error || 'Upload failed';
         }
-        document.getElementById('stat-dur').textContent = formatDuration(data.duration_s);
+      } catch {
+        dropStatus.textContent = '';
+        dropError.textContent = 'Network error';
+      }
+    });
 
-        // hide color options that have no data
-        const hasHr = allPoints.some(p => p.hr != null);
-        const hasEle = allPoints.some(p => p.elevation_m != null);
-        const hasSpeed = allPoints.some(p => p.speed_ms != null);
-        if (!hasHr) document.querySelector('option[value="hr"]').remove();
-        if (!hasEle) document.querySelector('option[value="elevation"]').remove();
-        if (!hasSpeed) document.querySelector('option[value="speed"]').remove();
+    // ── toolbar file picker / drop-zone handler ───────────────────────────────
 
-        const mode = document.getElementById('color-mode').value;
-        render(allPoints, mode);
-
-        if (allPoints.length) {
-          const lats = allPoints.map(p => p.lat), lons = allPoints.map(p => p.lon);
-          map.fitBounds([
-            [Math.min(...lats), Math.min(...lons)],
-            [Math.max(...lats), Math.max(...lons)],
-          ], { padding: [20, 20] });
+    async function uploadFile(file) {
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        const resp = await fetch('/api/upload', { method: 'POST', body: form });
+        const data = await resp.json();
+        if (resp.ok) {
+          applyActivity(data);
+        } else {
+          alert(data.error || 'Upload failed');
         }
-      })
-      .catch(err => console.error('Failed to load activity:', err));
+      } catch {
+        alert('Network error');
+      }
+    }
 
+    // Open the system file picker on click.
+    document.getElementById('file-input').addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (file) await uploadFile(file);
+      // Reset so the same file can be picked again if needed.
+      e.target.value = '';
+    });
+
+    // Accept drag-and-drop directly onto the button.
+    const loadBtn = document.getElementById('load-btn');
+
+    loadBtn.addEventListener('dragover', e => {
+      e.preventDefault();
+      loadBtn.classList.add('drag-over');
+    });
+
+    loadBtn.addEventListener('dragleave', e => {
+      if (!loadBtn.contains(e.relatedTarget)) loadBtn.classList.remove('drag-over');
+    });
+
+    loadBtn.addEventListener('drop', async e => {
+      e.preventDefault();
+      loadBtn.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) await uploadFile(file);
+    });
+
+    // ── color mode change handler ─────────────────────────────────────────────
+
+    // Re-render all markers with the newly selected color mode.
     document.getElementById('color-mode').addEventListener('change', e => {
       render(allPoints, e.target.value);
     });
+
+    init();
   </script>
 </body>
 </html>
