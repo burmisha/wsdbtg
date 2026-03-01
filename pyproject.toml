@@ -7,6 +7,9 @@ dependencies = [
     "python-telegram-bot>=21.0",
     "pydantic-settings>=2.0",
     "asyncpg>=0.30",
+    "fitparse>=1.2",
+    "gpxpy>=1.6",
+    "lxml>=5.0",
 ]
 
 [dependency-groups]

@@ -1,25 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from bot.db import BotContext
-from bot.handlers import echo, help_command, history, start
-
-
-async def test_start_replies():
-    update = MagicMock()
-    update.message.reply_text = AsyncMock()
-
-    await start(update, MagicMock())
-
-    update.message.reply_text.assert_called_once()
-
-
-async def test_help_replies():
-    update = MagicMock()
-    update.message.reply_text = AsyncMock()
-
-    await help_command(update, MagicMock())
-
-    update.message.reply_text.assert_called_once()
+from bot.handlers.text import echo, history
 
 
 async def test_echo_replies_with_same_text():
