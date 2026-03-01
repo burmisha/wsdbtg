@@ -117,3 +117,18 @@ docker compose logs --follow
 # Stop
 docker compose down
 ```
+
+### CLI
+
+```bash
+# один файл
+./cli.py track --track activity.fit
+
+# несколько файлов
+./cli.py track --track run1.gpx --track run2.fit --track run3.tcx
+
+# со всеми точками
+./cli.py track --track activity.fit --points
+```
+
+Supported formats: `.fit`, `.gpx`, `.tcx`.

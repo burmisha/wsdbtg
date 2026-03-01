@@ -561,9 +561,10 @@ wheels = [
 [[package]]
 name = "wsdbtg"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
+    { name = "colorama" },
     { name = "fitparse" },
     { name = "gpxpy" },
     { name = "lxml" },
@@ -582,6 +583,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
+    { name = "colorama", specifier = ">=0.4" },
     { name = "fitparse", specifier = ">=1.2" },
     { name = "gpxpy", specifier = ">=1.6" },
     { name = "lxml", specifier = ">=5.0" },
