@@ -1,7 +1,9 @@
 import argparse
 import sys
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
+
+from rich.table import Table
 
 from bot.cli import colors
 from bot.logging import get_logger
@@ -45,28 +47,61 @@ def _elevation_icon(delta: float) -> str:
     return '→'
 
 
-def _format_point(
-    point: TrackPoint,
-    start_time: datetime,
-    min_elevation: float,
-    prev_elevation: float | None,
-) -> str:
-    elapsed = int((point.timestamp - start_time).total_seconds())
-    elapsed_str = f'(+{_format_elapsed(elapsed)})'
-    parts = [
-        f'{point.timestamp.strftime("%H:%M:%S")} {elapsed_str}',
-        f'seg={point.segment_id}',
-        f'lat={point.lat:9.6f} lon={point.lon:9.6f}',
-    ]
-    if point.elevation_m is not None:
-        rel = point.elevation_m - min_elevation
-        delta = point.elevation_m - prev_elevation if prev_elevation is not None else 0.0
+@dataclass
+class _PointRow:
+    point: TrackPoint
+    elapsed_s: int
+    rel_elevation_m: float | None
+    delta_elevation_m: float | None
+
+
+def _prepare_rows(activity: Activity) -> list[_PointRow]:
+    min_ele = activity.min_elevation_m
+    prev_elevation: float | None = None
+    rows = []
+    for point in activity.points:
+        elapsed_s = int((point.timestamp - activity.recorded_at).total_seconds()) if activity.recorded_at else 0
+        rel = (point.elevation_m - min_ele) if (point.elevation_m is not None and min_ele is not None) else None
+        delta = (
+            (point.elevation_m - prev_elevation)
+            if (point.elevation_m is not None and prev_elevation is not None)
+            else None
+        )
+        rows.append(_PointRow(point=point, elapsed_s=elapsed_s, rel_elevation_m=rel, delta_elevation_m=delta))
+        if point.elevation_m is not None:
+            prev_elevation = point.elevation_m
+    return rows
+
+
+def _row_cells(row: _PointRow) -> tuple[str, str, str, str, str]:
+    elapsed_str = f'+{_format_elapsed(row.elapsed_s)}'
+    time_cell = f'[{row.point.timestamp.strftime("%H:%M:%S")}] {elapsed_str}'
+    seg_cell = f'{row.point.segment_id}'
+    coords_cell = f'lat={row.point.lat:9.6f} lon={row.point.lon:9.6f}'
+
+    if row.rel_elevation_m is not None:
+        delta = row.delta_elevation_m or 0.0
         icon = _elevation_icon(delta)
-        rel_str = colors.elevation_colored(f'+{rel:5.1f}m {icon}', delta)
-        parts.append(f'ele={point.elevation_m:6.1f}m ({rel_str})')
-    if point.hr is not None:
-        parts.append(f'hr={colors.hr_colored(f"{point.hr:3d}", point.hr)}')
-    return ' | '.join(parts)
+        rel_str = colors.elevation_colored(f'+{row.rel_elevation_m:5.1f}m {icon}', delta)
+        ele_cell = f'{row.point.elevation_m:6.1f}m ({rel_str})'
+    else:
+        ele_cell = ''
+
+    hr_cell = f'{colors.hr_colored(f"{row.point.hr:3d}", row.point.hr)}' if row.point.hr is not None else ''
+
+    return time_cell, seg_cell, coords_cell, ele_cell, hr_cell
+
+
+def _build_points_table(activity: Activity) -> Table:
+    table = Table(box=None, show_header=True, padding=(0, 1))
+    table.add_column('time', no_wrap=True)
+    table.add_column('seg', no_wrap=True)
+    table.add_column('coordinates', no_wrap=True)
+    table.add_column('elevation', no_wrap=True)
+    table.add_column('HR', no_wrap=True)
+    for row in _prepare_rows(activity):
+        table.add_row(*_row_cells(row))
+    return table
 
 
 def add_subparser(subparsers: argparse._SubParsersAction) -> None:
@@ -99,16 +134,9 @@ def run(args: argparse.Namespace) -> None:
             has_errors = True
             continue
 
-        logger.info(_format_activity(activity))
+        colors.console.print(_format_activity(activity))
         if args.points and activity.points:
-            start_time = activity.points[0].timestamp
-            elevations = [p.elevation_m for p in activity.points if p.elevation_m is not None]
-            min_elevation = min(elevations) if elevations else 0.0
-            prev_elevation: float | None = None
-            for point in activity.points:
-                logger.info(_format_point(point, start_time, min_elevation, prev_elevation))
-                if point.elevation_m is not None:
-                    prev_elevation = point.elevation_m
+            colors.console.print(_build_points_table(activity))
 
     if has_errors:
         sys.exit(1)
