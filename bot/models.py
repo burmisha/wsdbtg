@@ -22,3 +22,8 @@ class Activity:
     avg_hr: float | None
     max_hr: int | None
     points: list[TrackPoint] = field(default_factory=list)
+
+    @property
+    def min_elevation_m(self) -> float | None:
+        elevations = [p.elevation_m for p in self.points if p.elevation_m is not None]
+        return min(elevations) if elevations else None
