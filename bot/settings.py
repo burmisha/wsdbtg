@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     telegram_bot_token: SecretStr
     logging_level: str = 'INFO'
+    admin_user_id: int | None = None
 
     postgres_user: str
     postgres_password: str

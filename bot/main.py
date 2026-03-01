@@ -1,7 +1,10 @@
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.db import BotContext, create_pool
-from bot.handlers import echo, help_command, history, start
+from bot.handlers.admin import dbstats
+from bot.handlers.common import help_command, start
+from bot.handlers.text import echo, history
+from bot.handlers.upload import upload
 from bot.logging import get_logger, setup_logging
 from bot.settings import Settings
 
@@ -13,6 +16,7 @@ logger = get_logger(__name__)
 async def post_init(application: Application) -> None:
     application.bot_data = BotContext(
         db=await create_pool(settings.database_url),
+        admin_user_id=settings.admin_user_id,
     )
 
 
@@ -32,10 +36,12 @@ def main() -> None:
         .build()
     )
 
+    app.add_handler(CommandHandler('dbstats', dbstats))
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('history', history))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    app.add_handler(MessageHandler(filters.Document.ALL, upload))
 
     logger.info('Bot started')
     app.run_polling()

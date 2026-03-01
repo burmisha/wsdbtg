@@ -41,6 +41,7 @@ Get a bot token from [@BotFather](https://t.me/BotFather).
 
 Create a Droplet:
 
+- https://cloud.digitalocean.com/droplets
 - Ubuntu 24.04 LTS, Basic plan.
 - Add your SSH key during setup.
 
@@ -70,7 +71,11 @@ vim ~/.env
 
 ### Auto-deploy via GitHub Actions
 
-On every push to `main`, the workflow in `.github/workflows/deploy.yml`:
+The workflow in `.github/workflows/deploy.yml` runs on every push to `main` and on every pull request.
+
+On **pull request**: runs `test` and `lint` in parallel.
+
+On **push to `main`**: runs `test` and `lint`, then:
 1. Builds the Docker image and pushes it to GHCR (`ghcr.io/burmisha/wsdbtg:latest`)
 2. Copies `docker-compose.yml` to the droplet via SCP
 3. SSHes into the droplet and runs `docker compose pull && docker compose up --detach`
