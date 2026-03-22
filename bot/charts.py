@@ -7,8 +7,7 @@ matplotlib.use('Agg')  # non-interactive backend, must be set before pyplot impo
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
-from bot.models import Activity
-from bot.parsers.common import _haversine
+from bot.metrics import PointMetrics
 
 # ── Catppuccin Mocha palette ─────────────────────────────────────────────────
 
@@ -75,20 +74,13 @@ def _clean_spines(ax: plt.Axes, keep_right: bool = False) -> None:
 # ── charts ────────────────────────────────────────────────────────────────────
 
 
-def elevation_chart(activity: Activity) -> bytes | None:
+def elevation_chart(metrics: list[PointMetrics]) -> bytes | None:
     """Elevation profile: filled area of elevation (m) vs cumulative distance (km)."""
-    pts = [p for p in activity.points if p.elevation_m is not None]
+    pts = [(m.distance_km, m.elevation_m) for m in metrics if m.elevation_m is not None]
     if len(pts) < 2:
         return None
 
-    dist_m = 0.0
-    distances_km = [0.0]
-    for i in range(1, len(pts)):
-        if pts[i].segment_id == pts[i - 1].segment_id:
-            dist_m += _haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon)
-        distances_km.append(dist_m / 1000)
-
-    elevations = [p.elevation_m for p in pts]
+    distances_km, elevations = zip(*pts)
     baseline = min(elevations)
 
     fig, ax = plt.subplots(figsize=(10, 3))
@@ -104,29 +96,14 @@ def elevation_chart(activity: Activity) -> bytes | None:
     return _fig_to_bytes(fig)
 
 
-def pace_hr_chart(activity: Activity) -> bytes | None:
+def pace_hr_chart(metrics: list[PointMetrics]) -> bytes | None:
     """Pace (min/km) and HR (bpm) vs elapsed time on a dual-axis chart."""
-    pts = activity.points
-    if len(pts) < 2:
+    if len(metrics) < 2:
         return None
 
-    start = pts[0].timestamp
-    elapsed_s = np.array([(p.timestamp - start).total_seconds() for p in pts])
-
-    # Instantaneous pace between consecutive same-segment points.
-    raw_pace = np.full(len(pts), np.nan)
-    for i in range(1, len(pts)):
-        p, q = pts[i - 1], pts[i]
-        if p.segment_id != q.segment_id:
-            continue
-        dt = (q.timestamp - p.timestamp).total_seconds()
-        d = _haversine(p.lat, p.lon, q.lat, q.lon)
-        if dt > 0 and d > 0:
-            pace = 1000 / (d / dt) / 60  # min/km
-            if pace < 20:  # cap: ignore stops and GPS glitches
-                raw_pace[i] = pace
-
-    hrs = np.array([p.hr if p.hr is not None else np.nan for p in pts])
+    elapsed_s = np.array([m.elapsed_s for m in metrics])
+    raw_pace = np.array([m.pace_min_km if m.pace_min_km is not None else np.nan for m in metrics])
+    hrs = np.array([m.hr if m.hr is not None else np.nan for m in metrics])
 
     has_pace = not np.all(np.isnan(raw_pace))
     has_hr = not np.all(np.isnan(hrs))
