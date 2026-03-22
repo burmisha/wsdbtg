@@ -116,6 +116,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
         help=f'Путь к файлу ({", ".join(sorted(SUPPORTED_EXTENSIONS))}), можно указать несколько раз',
     )
     p.add_argument('--points', action='store_true', help='Вывести все точки трека')
+    p.add_argument('--charts', action='store_true', help='Сохранить графики рядом с файлом трека')
     p.set_defaults(func=run)
 
 
@@ -137,6 +138,29 @@ def run(args: argparse.Namespace) -> None:
         colors.console.print(_format_activity(activity))
         if args.points and activity.points:
             colors.console.print(_build_points_table(activity))
+        if args.charts:
+            import subprocess
+            import tempfile
+
+            from bot.charts import elevation_chart, pace_hr_chart
+            from bot.metrics import compute
+
+            metrics = compute(activity)
+            logger.info(
+                'Метрики: %d точек, темп: %d/%d, пульс: %d/%d',
+                len(metrics),
+                sum(1 for m in metrics if m.pace_min_km is not None),
+                len(metrics),
+                sum(1 for m in metrics if m.hr is not None),
+                len(metrics),
+            )
+            for name, data in [('elevation', elevation_chart(metrics)), ('pace_hr', pace_hr_chart(metrics))]:
+                if data is None:
+                    logger.warning('График %s не построен: нет данных', name)
+                    continue
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+                    f.write(data)
+                    subprocess.run(['open', f.name], check=True)
 
     if has_errors:
         sys.exit(1)
